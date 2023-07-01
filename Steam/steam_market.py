@@ -1,6 +1,8 @@
 import requests
 import bs4
-import time
+import time, datetime
+import json
+import re
 
 
 class SteamMarket:
@@ -9,8 +11,8 @@ class SteamMarket:
         self.CURRENCY_RUB = None
         self.html_site = None
         self.get_currency_rub()
-        # self.event()
-        self.get_data_item()
+        self.event()
+        # self.get_data_item()
 
     def get_currency_rub(self):
         """функция находит курс рубля для доллара в стим"""
@@ -48,6 +50,7 @@ class SteamMarket:
                 continue
             item = {'name': name, "price": round(float(price[1:-4])*self.CURRENCY_RUB,2), "url": url}
             print(item)
+            self.get_data_item(item)
             items.append(item)
         return items
 
@@ -59,13 +62,35 @@ class SteamMarket:
             items += item
             time.sleep(2)
 
-    def get_data_item(self):
+    def get_data_item(self, item):
         """функция получает данные с сайта маркета стим (НЕ ДОРАБОТАН)"""
         # https://steamcommunity.com/market/listings/730/Revolution%20Case
-        item = {'name': 'Sticker | FURIA (Holo) | Paris 2023', 'price': 142.98,
-                'url': 'https://steamcommunity.com/market/listings/730/Sticker%20%7C%20FURIA%20(Holo)%20%7C%20Paris%202023'}
-        sess = requests.Session()
-        url = sess.post(item['url'])
-        item_site = bs4.BeautifulSoup(url.text, 'html.parser')
-        item_site = item_site.find('body')
-        scripts = item_site.find_all('script')
+        # item = {'name': 'Sticker | FURIA (Holo) | Paris 2023', 'price': 142.98,
+        #         'url': 'https://steamcommunity.com/market/listings/730/Sticker%20%7C%20FURIA%20(Holo)%20%7C%20Paris%202023'}
+        # sess = requests.Session()
+        # url = sess.post(item['url'])
+        # item_site = bs4.BeautifulSoup(url.text, 'html.parser')
+        # item_site = item_site.find('body')
+        # scripts = item_site.find_all('script')
+
+        site = requests.get(item['url'])
+
+        steam_graph = re.search(r'var line1=(.+);', site.text)
+        steam_graph = steam_graph.group(1)
+
+        values_graph = json.loads(steam_graph)
+        prices = []
+        for values in values_graph:
+            # print(round(float(value[1])*self.CURRENCY_RUB, 2))
+            values[0] = datetime.datetime.strptime(values[0][:-7], "%b %d %Y")
+            values[1] = round(float(values[1]) * self.CURRENCY_RUB, 2)
+            if values[0] >= datetime.datetime.strptime('2023-06-01', "%Y-%m-%d"):
+                print(values)
+
+
+steam = SteamMarket()
+
+
+
+
+
