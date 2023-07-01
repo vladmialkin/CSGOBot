@@ -8,12 +8,12 @@ import re
 class SteamMarket:
     def __init__(self):
         self.START_ITEM_INDEX = 0
-        self.COUNT = 20
+        self.COUNT = 50
         self.CURRENCY_RUB = None
         self.html_site = None
+        self.BLACK_LIST = 'Paris 2023'
         self.get_currency_rub()
         self.event()
-        # self.get_top_list()
 
     def get_currency_rub(self):
         """функция находит курс рубля для доллара в стим"""
@@ -27,20 +27,15 @@ class SteamMarket:
                 f'https://steamcommunity.com/market/search/render/?query=&start={self.START_ITEM_INDEX}&count={self.COUNT}&search_descriptions=0&sort_column=popular&sort_dir=desc&appid=730')
             steam_market = steam_market.json()
             self.html_site = bs4.BeautifulSoup(steam_market['results_html'], 'html.parser')
-            self.START_ITEM_INDEX += 20
+            self.START_ITEM_INDEX += self.COUNT
         except (TypeError, AttributeError):
             print(f'Стим не хочет пускать, выполняю повторный запрос.')
-            time.sleep(60)
+            time.sleep(120)
             self.get_site()
 
     def get_items(self):
         """функция получает 100 предметов и возвращает их имя, стоимость, ссылку стим"""
         items = []
-        # names = self.html_site.find_all(
-        #     'div', class_="market_listing_row market_recent_listing_row market_listing_searchresult")
-        #
-        # prices = self.html_site.find_all('span', class_='normal_price')
-
         for index in range(self.COUNT):
             item_container = self.html_site.find("div", id=f"result_{index}")
             name = item_container.find('span', id=f"result_{index}_name").string
@@ -54,34 +49,79 @@ class SteamMarket:
 
     def event(self):
         items = []
-        while True:
+        while self.START_ITEM_INDEX != 200:
             self.get_site()
-            self.get_items()
-            # item = self.get_items()
-            # items += item
+            item = self.get_items()
+            items += item
             time.sleep(2)
+        else:
+            self.START_ITEM_INDEX = 0
 
     def get_data_item(self, item):
         """функция получает данные с сайта маркета стим (НЕ ДОРАБОТАН)"""
-        site = requests.get(item['url'])
+        try:
+            site = requests.get(item['url'])
+            steam_graph = re.search(r'var line1=(.+);', site.text)
+            steam_graph = steam_graph.group(1)
 
-        steam_graph = re.search(r'var line1=(.+);', site.text)
-        steam_graph = steam_graph.group(1)
+            values_graph = json.loads(steam_graph)
 
-        values_graph = json.loads(steam_graph)
-        prices = []
-        date = datetime.datetime.strptime(values_graph[-1][0][:-4], "%b %d %Y %H") - datetime.timedelta(days=30)
-        for values in values_graph:
-            values[0] = datetime.datetime.strptime(values[0][:-4], "%b %d %Y %H")
-            values[1] = round(float(values[1]) * self.CURRENCY_RUB, 2)
-            if values[0] >= date:
-                print(values)
+            prices = []
+            month_date = datetime.datetime.strptime(values_graph[-1][0][:-4], "%b %d %Y %H") - datetime.timedelta(
+                days=30)
+            week_date = datetime.datetime.strptime(values_graph[-1][0][:-4], "%b %d %Y %H") - datetime.timedelta(days=7)
+            day_date = datetime.datetime.strptime(values_graph[-1][0][:-4], "%b %d %Y %H") - datetime.timedelta(days=1)
+            hour_date = datetime.datetime.strptime(values_graph[-1][0][:-4], "%b %d %Y %H") - datetime.timedelta(
+                hours=1)
 
-    def get_top_list(self):
-        steam_market = requests.get(
-            f'https://steamcommunity.com/market/search?appid=730#p5_popular_desc')
-        self.html_site = bs4.BeautifulSoup(steam_market.text, 'html.parser')
-        print(self.html_site.find_all('div', id='searchResultsRows'))
+            month_max_price = round(float(values_graph[-1][1]) * self.CURRENCY_RUB, 2)
+            month_min_price = round(float(values_graph[-1][1]) * self.CURRENCY_RUB, 2)
+            weekly_max_price = round(float(values_graph[-1][1]) * self.CURRENCY_RUB, 2)
+            weekly_min_price = round(float(values_graph[-1][1]) * self.CURRENCY_RUB, 2)
+            day_max_price = round(float(values_graph[-1][1]) * self.CURRENCY_RUB, 2)
+            day_min_price = round(float(values_graph[-1][1]) * self.CURRENCY_RUB, 2)
+            hour_min_price = round(float(values_graph[-1][1]) * self.CURRENCY_RUB, 2)
+            hour_max_price = round(float(values_graph[-1][1]) * self.CURRENCY_RUB, 2)
+
+            for values in values_graph:
+                values[0] = datetime.datetime.strptime(values[0][:-4], "%b %d %Y %H")
+                values[1] = round(float(values[1]) * self.CURRENCY_RUB, 2)
+                if values[0] >= month_date:
+                    if month_min_price > values[1]:
+                        month_min_price = values[1]
+                    if month_max_price < values[1]:
+                        month_max_price = values[1]
+                if values[0] >= week_date:
+                    if weekly_min_price > values[1]:
+                        weekly_min_price = values[1]
+                    if weekly_max_price < values[1]:
+                        weekly_max_price = values[1]
+                if values[0] >= day_date:
+                    if day_min_price > values[1]:
+                        day_min_price = values[1]
+                    if day_max_price < values[1]:
+                        day_max_price = values[1]
+                if values[0] >= hour_date:
+                    if hour_min_price > values[1]:
+                        hour_min_price = values[1]
+                    if hour_max_price < values[1]:
+                        hour_max_price = values[1]
+            if (month_max_price > month_min_price * 2) or (weekly_max_price > weekly_min_price * 2) or (
+                    day_max_price > day_min_price * 2) or (hour_max_price > hour_min_price * 2):
+                print(f"Минимальная цена за месяц {month_min_price}")
+                print(f"Максимальная цена за месяц {month_max_price}")
+                print(f"Минимальная цена за неделю {weekly_min_price}")
+                print(f"Максимальная цена за неделю {weekly_max_price}")
+                print(f"Минимальная цена за день {day_min_price}")
+                print(f"Максимальная цена за день {day_max_price}")
+                print(f"Минимальная цена за час {hour_min_price}")
+                print(f"Максимальная цена за час {hour_max_price}")
+                print(f"СРОЧНО БЕГИ СМОТРЕТЬ В СТИМ! {item['url']}")
+
+        except (TypeError, AttributeError):
+            print(f'Стим не хочет пускать, выполняю повторный запрос.')
+            time.sleep(120)
+            self.get_data_item(item)
 
 
 steam = SteamMarket()
